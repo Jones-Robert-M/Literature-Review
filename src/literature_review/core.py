@@ -8,15 +8,15 @@ from networkx.algorithms.community import girvan_newman
 from wordcloud import WordCloud
 import matplotlib.pyplot as plt
 from transformers import pipeline
-import Levenshtein  # for fuzzy dedupe
+import Levenshtein
 from .plotting_utils import set_favourite_plot_params, apply_favourite_figure_params
+from itertools import combinations
 
 EMBED_MODEL = "sentence-transformers/all-mpnet-base-v2"
 SENTIMENT_MODEL = "distilbert-base-uncased-finetuned-sst-2-english"
 SUMMARIZATION_MODEL = "sshleifer/distilbart-cnn-12-6"
 
 def dedupe_papers(papers, title_thresh=5):
-    # simple dedupe by Levenshtein distance on titles
     out = []
     titles = []
     for p in papers:
@@ -48,7 +48,6 @@ def build_similarity_graph(embeddings, top_k=8, thresh=0.55):
     for i in range(n):
         G.add_node(i)
     for i in range(n):
-        # connect to top_k highest similarities above thresh (exclude self)
         idx = np.argsort(-sim[i])
         added = 0
         for j in idx:
@@ -60,7 +59,6 @@ def build_similarity_graph(embeddings, top_k=8, thresh=0.55):
     return G, sim
 
 def run_girvan_newman_graph(G, max_communities=8):
-    # Girvan-Newman yields hierarchical splits; take first split that gives at most max_communities
     comp_gen = girvan_newman(G)
     communities = None
     try:
@@ -70,7 +68,6 @@ def run_girvan_newman_graph(G, max_communities=8):
                 break
     except Exception:
         communities = [list(G.nodes())]
-    # label nodes
     labels = {}
     for i, c in enumerate(communities):
         for node in c:
@@ -93,7 +90,6 @@ def cluster_summaries(df, labels, top_k_terms=15):
 def sentiment_analysis(texts):
     nlp = pipeline("sentiment-analysis", model=SENTIMENT_MODEL)
     res = nlp(texts, truncation=True)
-    # convert to simple score: POSITIVE->+1 * score, NEGATIVE->-1 * score
     scores = []
     for r in res:
         s = r['score'] if r['label']=='POSITIVE' else -r['score']
@@ -101,26 +97,21 @@ def sentiment_analysis(texts):
     return scores
 
 def summarize_sentiment(scores):
-    """Generates a human-readable summary of sentiment scores."""
     avg_score = np.mean(scores)
     positive_count = np.sum(np.array(scores) > 0.5)
     negative_count = np.sum(np.array(scores) < -0.5)
     neutral_count = len(scores) - positive_count - negative_count
-
     summary = f"The average sentiment score across the corpus is {avg_score:.2f}.\n"
     summary += f"There are {positive_count} positive, {negative_count} negative, and {neutral_count} neutral papers.\n"
-
     if avg_score > 0.2:
         summary += "Overall, the sentiment of the corpus is positive."
     elif avg_score < -0.2:
         summary += "Overall, the sentiment of the corpus is negative."
     else:
         summary += "Overall, the sentiment of the corpus is neutral."
-
     return summary
 
 def summarize_text_local(text):
-    """Summarizes a text using a local model."""
     summarizer = pipeline("summarization", model=SUMMARIZATION_MODEL)
     summary = summarizer(text, max_length=150, min_length=30, do_sample=False)
     return summary[0]['summary_text']
@@ -129,22 +120,17 @@ def rank_papers(df, embeddings, query_embedding=None, sim=None):
     n = len(df)
     G = nx.from_numpy_array(sim) if sim is not None else nx.Graph()
     scores = np.zeros(n)
-    # centrality measures
     if len(G)>0:
         pr = nx.pagerank(G, weight='weight')
         for i in range(n):
             scores[i] += pr.get(i, 0.0)
-    # citations if available (normalised)
     if 'citationCount' in df.columns:
         c = df['citationCount'].fillna(0).to_numpy().astype(float)
         if c.max()>0:
-            scores += (c / (c.max()))
-    # relevance to query
+            scores += (c / c.max())
     if query_embedding is not None:
         qsim = cosine_similarity([query_embedding], embeddings).ravel()
         scores += qsim
-    # recency boost (more recent papers get slight boost)
-    # published may be year or iso date — try year parse
     years = df['published'].fillna("")
     year_arr = []
     for y in years:
@@ -160,43 +146,49 @@ def rank_papers(df, embeddings, query_embedding=None, sim=None):
     df_sorted = df.sort_values('score', ascending=False).reset_index(drop=True)
     return df_sorted
 
+def calculate_reference_overlap(papers):
+    """Calculates the reference overlap between papers."""
+    paper_references = {p['id']: set(p.get('references', [])) for p in papers if 'id' in p}
+    overlaps = []
+    for p1, p2 in combinations(paper_references.keys(), 2):
+        if p1 in paper_references and p2 in paper_references:
+            overlap = len(paper_references[p1].intersection(paper_references[p2]))
+            if overlap > 0:
+                overlaps.append(overlap)
+    return overlaps
+
+def plot_reference_overlap(overlaps, output_path):
+    """Plots the distribution of reference overlaps."""
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.hist(overlaps, bins=20)
+    ax.set_title('Reference Overlap Distribution', fontsize=16, fontweight='bold')
+    ax = set_favourite_plot_params(ax, x_title='Number of Shared References', y_title='Number of Paper Pairs')
+    fig = apply_favourite_figure_params(fig)
+    plt.savefig(output_path)
+    plt.close()
+
 def visualize_graph(G, labels, cluster_summaries, output_path):
     """Visualizes a graph with nodes colored by cluster and a legend with cluster terms."""
     fig, ax = plt.subplots(figsize=(16, 16))
     pos = nx.kamada_kawai_layout(G)
-    
-    # Create a color map from cluster labels
     colors = [labels.get(node, 0) for node in G.nodes()]
-    
-    # Get node sizes based on the number of papers in the cluster
-    node_sizes = [cluster_summaries[labels.get(node, 0)]['n_papers'] * 10 for node in G.nodes()]
-
-    # Draw the graph
+    node_sizes = [cluster_summaries.get(labels.get(node, 0), {}).get('n_papers', 1) * 20 for node in G.nodes()]
     nx.draw_networkx_nodes(G, pos, node_color=colors, cmap=plt.cm.plasma, node_size=node_sizes, alpha=0.8, ax=ax)
     nx.draw_networkx_edges(G, pos, alpha=0.3, ax=ax)
-    
-    # Create a legend for the clusters
     legend_labels = {}
     for cluster_id, summary in cluster_summaries.items():
         top_terms = ", ".join(summary['top_terms'][:3])
         legend_labels[cluster_id] = f"Cluster {cluster_id}: {top_terms}"
-
     from matplotlib.lines import Line2D
     cmap = plt.cm.plasma
     custom_lines = [Line2D([0], [0], marker='o', color='w',
                           markerfacecolor=cmap(i/len(legend_labels)), markersize=15) for i in range(len(legend_labels))]
-
-    ax.legend(custom_lines, [legend_labels[i] for i in range(len(legend_labels))], title='Clusters', bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=12)
-
+    ax.legend(custom_lines, [legend_labels.get(i, '') for i in range(len(legend_labels))], title='Clusters', bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=12)
     ax.set_title("Paper Similarity Network", fontsize=24, fontweight='bold')
-    
-    # Apply favourite plot parameters
     ax = set_favourite_plot_params(ax, x_title='', y_title='', spine_width=0)
     ax.grid(False)
     ax.set_xticks([])
     ax.set_yticks([])
-
     fig = apply_favourite_figure_params(fig)
-    
     plt.savefig(output_path, dpi=300)
     plt.close()

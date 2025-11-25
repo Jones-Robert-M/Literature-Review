@@ -8,9 +8,11 @@ An autonomous literature review tool that uses large language models to help you
 ## Features
 
 -   **Fetch Papers**: Fetches papers from arXiv and Semantic Scholar.
+-   **First-Order Sub-Search**: Automatically performs a sub-search on articles referenced by the initial query (requires Semantic Scholar API Key).
 -   **In-depth Analysis**: Performs sentiment analysis, clustering, and ranking of papers.
--   **Visualizations**: Generates word clouds and network graphs to visualize the relationships between papers.
--   **Summarization**: Uses a local summarization model to summarize the abstracts of the top papers.
+-   **Corpus Summary**: Generates a textual summary of the entire aggregated corpus of abstracts.
+-   **Visualizations**: Generates word clouds and network graphs to visualize the relationships between papers. Node sizes in the network graph correspond to the number of papers in each cluster, and the plot is designed for better visual appeal.
+-   **Local Summarization**: Uses a local summarization model to summarize the abstracts of the top papers.
 -   **Extensible**: Easily extensible to support other data sources and analysis methods.
 
 ## Getting Started
@@ -37,20 +39,17 @@ An autonomous literature review tool that uses large language models to help you
 
 ### Configuration
 
-This tool can use the Gemini API to summarize papers. To use this feature, you need to configure your Gemini API key.
+This tool can use the Semantic Scholar API for sub-searches and the Gemini API to summarize papers (though local summarization is now default). To use these features, you need to configure your API keys.
 
 1.  Create a copy of the `settings.env.example` file in the `configs` directory and name it `settings.env`:
     ```bash
     cp configs/settings.env.example configs/settings.env
     ```
-2.  Add your Gemini API key to the `configs/settings.env` file:
+2.  Add your API keys to the `configs/settings.env` file. You can obtain a Semantic Scholar API key from [https://www.semanticscholar.org/product/api](https://www.semanticscholar.org/product/api).
     ```
-    GEMINI_API_KEY="your-api-key"
+    GEMINI_API_KEY="your-gemini-api-key"
+    SEMANTIC_SCHOLAR_API_KEY="your-semantic-scholar-api-key"
     ```
-
-### How the API Key is Used
-
-Your Gemini API key is automatically connected to the workflow. For more details, see the `explanation.txt` file.
 
 ## Usage
 
@@ -62,20 +61,22 @@ literature-review arxiv "your query" [OPTIONS]
 
 ### Options
 
--   `--max-results`: The maximum number of papers to fetch (default: 20).
+-   `--max-results`: The maximum number of papers to fetch (default: 10).
 -   `--output-dir`: The directory to save the analysis results (default: `output`).
--   `--visualize-graph`: A flag to generate a graph visualization of the papers.
+-   `--visualize-graph/--no-visualize-graph`: Generate a graph visualization of the papers (default: enabled).
+-   `--sub-search/--no-sub-search`: Perform a sub-search on referenced articles (default: enabled). Requires `SEMANTIC_SCHOLAR_API_KEY`.
 
 ### Example
 
 ```bash
-literature-review arxiv "graph neural networks" --max-results 30 --output-dir gnn_analysis --visualize-graph
+literature-review arxiv "graph neural networks" --max-results 30 --output-dir gnn_analysis --no-sub-search
 ```
 
 This command will:
 1.  Fetch the top 30 papers related to "graph neural networks" from arXiv and Semantic Scholar.
 2.  Analyze the papers and save the results to the `gnn_analysis` directory.
 3.  Generate a similarity graph of the papers.
+4.  *Not* perform a sub-search on referenced articles due to `--no-sub-search`.
 
 ## Outputs
 
@@ -87,6 +88,8 @@ The tool generates the following output files in the specified output directory:
 -   `wordcloud.png`: A word cloud generated from the paper titles and abstracts.
 -   `cluster_summaries.json`: A JSON file with a summary of each paper cluster.
 -   `similarity_graph.png`: A graph visualization of the paper similarity network.
+-   `corpus_summary.txt`: A textual summary of the entire aggregated corpus of abstracts.
+-   `reference_overlap.png`: (Only if `sub-search` is enabled and successful) A histogram showing the distribution of shared references between articles.
 
 ## Project Structure
 
@@ -101,6 +104,7 @@ The tool generates the following output files in the specified output directory:
 │       ├── arxiv_fetcher.py
 │       ├── core.py
 │       ├── main.py
+│       ├── plotting_utils.py
 │       └── semantic_scholar_fetcher.py
 ├── output/
 ├── explanation.txt

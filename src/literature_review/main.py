@@ -2,7 +2,7 @@ import click
 from dotenv import load_dotenv
 import os
 from literature_review.arxiv_fetcher import fetch_arxiv
-from literature_review.semantic_scholar_fetcher import fetch_semanticscholar
+from literature_review.semantic_scholar_fetcher import fetch_semanticscholar, fetch_paper_details
 from literature_review.core import (
     build_corpus,
     embed_texts,
@@ -12,9 +12,11 @@ from literature_review.core import (
     cluster_summaries,
     build_similarity_graph,
     run_girvan_newman_graph,
-    visualize_graph as visualize_graph_func,
+    visualize_graph,
     summarize_text_local,
     dedupe_papers,
+    calculate_reference_overlap,
+    plot_reference_overlap,
 )
 from literature_review.plotting_utils import set_favourite_plot_params, apply_favourite_figure_params
 import pandas as pd
@@ -34,21 +36,59 @@ def cli():
 
 @cli.command()
 @click.argument('query')
-@click.option('--max-results', default=20, help='Maximum number of papers to fetch.')
+@click.option('--max-results', default=10, help='Maximum number of papers to fetch.')
 @click.option('--output-dir', default="output", help='Directory to save analysis results. Defaults to "output".')
 @click.option('--visualize-graph/--no-visualize-graph', 'do_visualize_graph', default=True, help='Generate a graph visualization of the papers.')
-def arxiv(query, max_results, output_dir, do_visualize_graph):
+@click.option('--sub-search/--no-sub-search', default=True, help='Perform a sub-search on referenced articles.')
+def arxiv(query, max_results, output_dir, do_visualize_graph, sub_search):
     """Fetches papers from arXiv, analyzes them, and saves the results."""
     output_dir = create_output_dir(output_dir)
     
     click.echo(f"Fetching papers from arXiv with query: '{query}' and max results: {max_results}")
     arxiv_papers = fetch_arxiv(query, max_results=max_results)
     
-    click.echo(f"Fetching papers from Semantic Scholar with query: '{query}' and max results: {max_results}")
-    ss_papers = fetch_semanticscholar(query, limit=max_results)
+    ss_papers = []
+    try:
+        click.echo(f"Fetching papers from Semantic Scholar with query: '{query}' and max results: {max_results}")
+        ss_papers = fetch_semanticscholar(query, limit=max_results)
+    except Exception as e:
+        click.echo(f"Warning: Could not fetch papers from Semantic Scholar. Reason: {e}")
+        click.echo("Continuing with arXiv papers only.")
 
-    papers = dedupe_papers(arxiv_papers + ss_papers)
-    
+    initial_papers = dedupe_papers(arxiv_papers + ss_papers)
+    papers = initial_papers.copy()
+
+    if sub_search:
+        click.echo("\nPerforming sub-search on referenced articles...")
+        referenced_ids = set()
+        for paper in initial_papers:
+            if 'references' in paper:
+                referenced_ids.update(paper['references'])
+        
+        click.echo(f"Found {len(referenced_ids)} unique referenced articles.")
+        
+        if referenced_ids:
+            try:
+                referenced_papers = fetch_paper_details(list(referenced_ids))
+                click.echo(f"Fetched details for {len(referenced_papers)} referenced articles.")
+                
+                initial_paper_ids = {p['id'] for p in initial_papers if 'id' in p}
+                new_papers = [p for p in referenced_papers if 'id' in p and p['id'] not in initial_paper_ids]
+                
+                click.echo(f"Found {len(new_papers)} new articles from sub-search.")
+                
+                papers.extend(new_papers)
+                papers = dedupe_papers(papers)
+
+                overlaps = calculate_reference_overlap(initial_papers)
+                if overlaps and output_dir:
+                    plot_reference_overlap(overlaps, os.path.join(output_dir, "reference_overlap.png"))
+                    click.echo(f"Reference overlap plot saved to {os.path.join(output_dir, 'reference_overlap.png')}")
+            except Exception as e:
+                click.echo(f"Warning: Could not perform sub-search. Reason: {e}")
+                click.echo("This is likely due to a missing or invalid Semantic Scholar API key.")
+
+
     if not papers:
         click.echo("No papers found.")
         return
@@ -120,10 +160,22 @@ def arxiv(query, max_results, output_dir, do_visualize_graph):
         click.echo("\nGenerating graph visualization...")
         if output_dir:
             graph_path = os.path.join(output_dir, 'similarity_graph.png')
-            visualize_graph_func(G_sim, labels, summaries, graph_path)
+            visualize_graph(G_sim, labels, summaries, graph_path)
             click.echo(f"Graph visualization saved to {graph_path}")
 
-    # Summarization
+    # Corpus Summarization
+    click.echo("\nSummarizing the entire corpus...")
+    all_abstracts = " ".join(df['abstract'].fillna("").tolist())
+    if len(all_abstracts.strip()) > 0:
+        corpus_summary = summarize_text_local(all_abstracts)
+        click.echo("\nCorpus Summary:")
+        click.echo(corpus_summary)
+        if output_dir:
+            with open(os.path.join(output_dir, "corpus_summary.txt"), "w") as f:
+                f.write(corpus_summary)
+            click.echo(f"\nCorpus summary saved to {os.path.join(output_dir, 'corpus_summary.txt')}")
+
+    # Summarization of top 10
     click.echo("\nSummarizing top 10 papers...")
     for i, row in top_10.iterrows():
         click.echo(f"\nTitle: {row['title']}")
