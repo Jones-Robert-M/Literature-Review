@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "literature-review"
+version = "0.0.1"
+authors = [
+  { name="Your Name", email="you@example.com" },
+]
+description = "An autonomous literature review tool."
+readme = "README.md"
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "arxiv",
+    "sentence-transformers",
+    "scikit-learn",
+    "networkx",
+    "pandas",
+    "numpy",
+    "wordcloud",
+    "matplotlib",
+    "transformers",
+    "requests",
+    "python-Levenshtein",
+    "click",
+    "python-dotenv",
+    "google-generativeai",
+]
+
+[project.scripts]
+literature-review = "literature_review.main:cli"
