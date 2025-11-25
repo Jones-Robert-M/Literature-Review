@@ -9,6 +9,7 @@ from wordcloud import WordCloud
 import matplotlib.pyplot as plt
 from transformers import pipeline
 import Levenshtein  # for fuzzy dedupe
+from .plotting_utils import set_favourite_plot_params, apply_favourite_figure_params
 
 EMBED_MODEL = "sentence-transformers/all-mpnet-base-v2"
 SENTIMENT_MODEL = "distilbert-base-uncased-finetuned-sst-2-english"
@@ -161,15 +162,18 @@ def rank_papers(df, embeddings, query_embedding=None, sim=None):
 
 def visualize_graph(G, labels, cluster_summaries, output_path):
     """Visualizes a graph with nodes colored by cluster and a legend with cluster terms."""
-    plt.figure(figsize=(14, 14))
-    pos = nx.spring_layout(G, k=0.1, iterations=20)
+    fig, ax = plt.subplots(figsize=(16, 16))
+    pos = nx.kamada_kawai_layout(G)
     
     # Create a color map from cluster labels
     colors = [labels.get(node, 0) for node in G.nodes()]
     
+    # Get node sizes based on the number of papers in the cluster
+    node_sizes = [cluster_summaries[labels.get(node, 0)]['n_papers'] * 10 for node in G.nodes()]
+
     # Draw the graph
-    nx.draw_networkx_nodes(G, pos, node_color=colors, cmap=plt.cm.viridis, node_size=50)
-    nx.draw_networkx_edges(G, pos, alpha=0.5)
+    nx.draw_networkx_nodes(G, pos, node_color=colors, cmap=plt.cm.plasma, node_size=node_sizes, alpha=0.8, ax=ax)
+    nx.draw_networkx_edges(G, pos, alpha=0.3, ax=ax)
     
     # Create a legend for the clusters
     legend_labels = {}
@@ -177,15 +181,22 @@ def visualize_graph(G, labels, cluster_summaries, output_path):
         top_terms = ", ".join(summary['top_terms'][:3])
         legend_labels[cluster_id] = f"Cluster {cluster_id}: {top_terms}"
 
-    # Add the legend to the plot
-    # We need to create proxy artists for the legend
     from matplotlib.lines import Line2D
-    cmap = plt.cm.viridis
+    cmap = plt.cm.plasma
     custom_lines = [Line2D([0], [0], marker='o', color='w',
-                          markerfacecolor=cmap(i/len(legend_labels)), markersize=10) for i in range(len(legend_labels))]
+                          markerfacecolor=cmap(i/len(legend_labels)), markersize=15) for i in range(len(legend_labels))]
 
-    plt.legend(custom_lines, [legend_labels[i] for i in range(len(legend_labels))], title='Clusters', bbox_to_anchor=(1.05, 1), loc='upper left')
+    ax.legend(custom_lines, [legend_labels[i] for i in range(len(legend_labels))], title='Clusters', bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=12)
 
-    plt.title("Paper Similarity Network")
-    plt.tight_layout()
-    plt.savefig(output_path)
+    ax.set_title("Paper Similarity Network", fontsize=24, fontweight='bold')
+    
+    # Apply favourite plot parameters
+    ax = set_favourite_plot_params(ax, x_title='', y_title='', spine_width=0)
+    ax.grid(False)
+    ax.set_xticks([])
+    ax.set_yticks([])
+
+    fig = apply_favourite_figure_params(fig)
+    
+    plt.savefig(output_path, dpi=300)
+    plt.close()

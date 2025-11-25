@@ -16,6 +16,7 @@ from literature_review.core import (
     summarize_text_local,
     dedupe_papers,
 )
+from literature_review.plotting_utils import set_favourite_plot_params, apply_favourite_figure_params
 import pandas as pd
 from wordcloud import WordCloud
 import matplotlib.pyplot as plt
@@ -35,7 +36,7 @@ def cli():
 @click.argument('query')
 @click.option('--max-results', default=20, help='Maximum number of papers to fetch.')
 @click.option('--output-dir', default="output", help='Directory to save analysis results. Defaults to "output".')
-@click.option('--visualize-graph', 'do_visualize_graph', is_flag=True, help='Generate a graph visualization of the papers.')
+@click.option('--visualize-graph/--no-visualize-graph', 'do_visualize_graph', default=True, help='Generate a graph visualization of the papers.')
 def arxiv(query, max_results, output_dir, do_visualize_graph):
     """Fetches papers from arXiv, analyzes them, and saves the results."""
     output_dir = create_output_dir(output_dir)
@@ -79,11 +80,11 @@ def arxiv(query, max_results, output_dir, do_visualize_graph):
     click.echo(sentiment_summary)
 
     if output_dir:
-        plt.figure(figsize=(10, 6))
-        df['sentiment'].hist(bins=20)
-        plt.title('Sentiment Analysis of Abstracts')
-        plt.xlabel('Sentiment Score')
-        plt.ylabel('Number of Papers')
+        fig, ax = plt.subplots(figsize=(10, 6))
+        df['sentiment'].hist(bins=20, ax=ax)
+        ax.set_title('Sentiment Analysis of Abstracts', fontsize=16, fontweight='bold')
+        ax = set_favourite_plot_params(ax, x_title='Sentiment Score', y_title='Number of Papers')
+        fig = apply_favourite_figure_params(fig)
         sentiment_plot_path = os.path.join(output_dir, 'sentiment_analysis.png')
         plt.savefig(sentiment_plot_path)
         plt.close()
