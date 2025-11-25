@@ -1,6 +1,6 @@
 # Literature Review
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/release/python-380/)
 
 An autonomous literature review tool that uses large language models to help you conduct literature reviews.
@@ -10,7 +10,7 @@ An autonomous literature review tool that uses large language models to help you
 -   **Fetch Papers**: Fetches papers from arXiv and Semantic Scholar.
 -   **In-depth Analysis**: Performs sentiment analysis, clustering, and ranking of papers.
 -   **Visualizations**: Generates word clouds and network graphs to visualize the relationships between papers.
--   **Summarization**: Uses the Gemini API to summarize the abstracts of the top papers.
+-   **Summarization**: Uses a local summarization model to summarize the abstracts of the top papers.
 -   **Extensible**: Easily extensible to support other data sources and analysis methods.
 
 ## Getting Started
@@ -48,6 +48,10 @@ This tool can use the Gemini API to summarize papers. To use this feature, you n
     GEMINI_API_KEY="your-api-key"
     ```
 
+### How the API Key is Used
+
+Your Gemini API key is automatically connected to the workflow. For more details, see the `explanation.txt` file.
+
 ## Usage
 
 To fetch and analyze papers, use the `arxiv` command:
@@ -59,7 +63,7 @@ literature-review arxiv "your query" [OPTIONS]
 ### Options
 
 -   `--max-results`: The maximum number of papers to fetch (default: 20).
--   `--output-dir`: The directory to save the analysis results (default: None).
+-   `--output-dir`: The directory to save the analysis results (default: `output`).
 -   `--visualize-graph`: A flag to generate a graph visualization of the papers.
 
 ### Example
@@ -98,7 +102,7 @@ The tool generates the following output files in the specified output directory:
 │       ├── core.py
 │       ├── main.py
 │       └── semantic_scholar_fetcher.py
-├── analysis_results/
+├── output/
 ├── explanation.txt
 ├── LICENSE
 ├── pyproject.toml
@@ -111,4 +115,4 @@ Contributions are welcome! If you have any ideas, suggestions, or bug reports, p
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the GNU GENERAL PUBLIC LICENSE - see the [LICENSE](LICENSE) file for details.
