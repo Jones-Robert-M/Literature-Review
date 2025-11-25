@@ -12,6 +12,7 @@ import Levenshtein  # for fuzzy dedupe
 
 EMBED_MODEL = "sentence-transformers/all-mpnet-base-v2"
 SENTIMENT_MODEL = "distilbert-base-uncased-finetuned-sst-2-english"
+SUMMARIZATION_MODEL = "sshleifer/distilbart-cnn-12-6"
 
 def dedupe_papers(papers, title_thresh=5):
     # simple dedupe by Levenshtein distance on titles
@@ -117,6 +118,12 @@ def summarize_sentiment(scores):
 
     return summary
 
+def summarize_text_local(text):
+    """Summarizes a text using a local model."""
+    summarizer = pipeline("summarization", model=SUMMARIZATION_MODEL)
+    summary = summarizer(text, max_length=150, min_length=30, do_sample=False)
+    return summary[0]['summary_text']
+
 def rank_papers(df, embeddings, query_embedding=None, sim=None):
     n = len(df)
     G = nx.from_numpy_array(sim) if sim is not None else nx.Graph()
@@ -152,16 +159,33 @@ def rank_papers(df, embeddings, query_embedding=None, sim=None):
     df_sorted = df.sort_values('score', ascending=False).reset_index(drop=True)
     return df_sorted
 
-def visualize_graph(G, labels, output_path):
-    """Visualizes a graph with nodes colored by cluster."""
-    plt.figure(figsize=(12, 12))
+def visualize_graph(G, labels, cluster_summaries, output_path):
+    """Visualizes a graph with nodes colored by cluster and a legend with cluster terms."""
+    plt.figure(figsize=(14, 14))
     pos = nx.spring_layout(G, k=0.1, iterations=20)
     
     # Create a color map from cluster labels
     colors = [labels.get(node, 0) for node in G.nodes()]
     
+    # Draw the graph
     nx.draw_networkx_nodes(G, pos, node_color=colors, cmap=plt.cm.viridis, node_size=50)
     nx.draw_networkx_edges(G, pos, alpha=0.5)
     
+    # Create a legend for the clusters
+    legend_labels = {}
+    for cluster_id, summary in cluster_summaries.items():
+        top_terms = ", ".join(summary['top_terms'][:3])
+        legend_labels[cluster_id] = f"Cluster {cluster_id}: {top_terms}"
+
+    # Add the legend to the plot
+    # We need to create proxy artists for the legend
+    from matplotlib.lines import Line2D
+    cmap = plt.cm.viridis
+    custom_lines = [Line2D([0], [0], marker='o', color='w',
+                          markerfacecolor=cmap(i/len(legend_labels)), markersize=10) for i in range(len(legend_labels))]
+
+    plt.legend(custom_lines, [legend_labels[i] for i in range(len(legend_labels))], title='Clusters', bbox_to_anchor=(1.05, 1), loc='upper left')
+
     plt.title("Paper Similarity Network")
+    plt.tight_layout()
     plt.savefig(output_path)

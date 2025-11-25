@@ -1,7 +1,6 @@
 import click
 from dotenv import load_dotenv
 import os
-import google.generativeai as genai
 from literature_review.arxiv_fetcher import fetch_arxiv
 from literature_review.semantic_scholar_fetcher import fetch_semanticscholar
 from literature_review.core import (
@@ -14,23 +13,12 @@ from literature_review.core import (
     build_similarity_graph,
     run_girvan_newman_graph,
     visualize_graph as visualize_graph_func,
+    summarize_text_local,
     dedupe_papers,
 )
 import pandas as pd
 from wordcloud import WordCloud
 import matplotlib.pyplot as plt
-
-# Load environment variables from .env file
-load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '..', '..', 'configs', 'settings.env'))
-
-def get_gemini_model():
-    """Initializes and returns the Gemini Pro model."""
-    api_key = os.getenv("GEMINI_API_KEY")
-    if not api_key:
-        return None
-    genai.configure(api_key=api_key)
-    model = genai.GenerativeModel('gemini-pro')
-    return model
 
 def create_output_dir(output_dir):
     """Create the output directory if it doesn't exist."""
@@ -41,13 +29,12 @@ def create_output_dir(output_dir):
 @click.group()
 def cli():
     """An autonomous literature review tool."""
-    if not os.getenv("GEMINI_API_KEY"):
-        click.echo("Warning: GEMINI_API_KEY not found. Summarization will be disabled.")
+    pass
 
 @cli.command()
 @click.argument('query')
 @click.option('--max-results', default=20, help='Maximum number of papers to fetch.')
-@click.option('--output-dir', default=None, help='Directory to save analysis results.')
+@click.option('--output-dir', default="output", help='Directory to save analysis results. Defaults to "output".')
 @click.option('--visualize-graph', 'do_visualize_graph', is_flag=True, help='Generate a graph visualization of the papers.')
 def arxiv(query, max_results, output_dir, do_visualize_graph):
     """Fetches papers from arXiv, analyzes them, and saves the results."""
@@ -99,6 +86,7 @@ def arxiv(query, max_results, output_dir, do_visualize_graph):
         plt.ylabel('Number of Papers')
         sentiment_plot_path = os.path.join(output_dir, 'sentiment_analysis.png')
         plt.savefig(sentiment_plot_path)
+        plt.close()
         click.echo(f"Sentiment analysis plot saved to {sentiment_plot_path}")
         with open(os.path.join(output_dir, "sentiment_summary.txt"), "w") as f:
             f.write(sentiment_summary)
@@ -131,25 +119,21 @@ def arxiv(query, max_results, output_dir, do_visualize_graph):
         click.echo("\nGenerating graph visualization...")
         if output_dir:
             graph_path = os.path.join(output_dir, 'similarity_graph.png')
-            visualize_graph_func(G_sim, labels, graph_path)
+            visualize_graph_func(G_sim, labels, summaries, graph_path)
             click.echo(f"Graph visualization saved to {graph_path}")
 
-    model = get_gemini_model()
-    
-    # Only summarize top 10 papers
+    # Summarization
+    click.echo("\nSummarizing top 10 papers...")
     for i, row in top_10.iterrows():
         click.echo(f"\nTitle: {row['title']}")
         click.echo(f"Authors: {row['authors']}")
         click.echo(f"URL: {row['url']}")
         
-        if model:
-            prompt = f"Summarize the following abstract in 3 sentences:\n\n{row['abstract']}"
-            
-            try:
-                response = model.generate_content(prompt)
-                click.echo(f"Summary: {response.text}")
-            except Exception as e:
-                click.echo(f"Error summarizing paper: {e}")
+        try:
+            summary = summarize_text_local(row['abstract'])
+            click.echo(f"Summary: {summary}")
+        except Exception as e:
+            click.echo(f"Error summarizing paper: {e}")
 
 if __name__ == '__main__':
     cli()
