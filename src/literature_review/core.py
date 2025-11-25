@@ -85,7 +85,7 @@ def cluster_summaries(df, labels, top_k_terms=15):
         terms = np.array(tf.get_feature_names_out())
         scores = X.toarray().ravel()
         top = terms[np.argsort(-scores)][:top_k_terms].tolist()
-        summaries[cid] = {"n_papers": len(idx), "top_terms": top, "paper_indices": idx}
+        summaries[cid] = {"n_papers": len(idx), "top_terms": top, "paper_indices": [int(i) for i in idx]}
     return summaries
 
 def sentiment_analysis(texts):
@@ -94,9 +94,28 @@ def sentiment_analysis(texts):
     # convert to simple score: POSITIVE->+1 * score, NEGATIVE->-1 * score
     scores = []
     for r in res:
-        s = r['score'] if r['label']=="POSITIVE" else -r['score']
+        s = r['score'] if r['label']=='POSITIVE' else -r['score']
         scores.append(s)
     return scores
+
+def summarize_sentiment(scores):
+    """Generates a human-readable summary of sentiment scores."""
+    avg_score = np.mean(scores)
+    positive_count = np.sum(np.array(scores) > 0.5)
+    negative_count = np.sum(np.array(scores) < -0.5)
+    neutral_count = len(scores) - positive_count - negative_count
+
+    summary = f"The average sentiment score across the corpus is {avg_score:.2f}.\n"
+    summary += f"There are {positive_count} positive, {negative_count} negative, and {neutral_count} neutral papers.\n"
+
+    if avg_score > 0.2:
+        summary += "Overall, the sentiment of the corpus is positive."
+    elif avg_score < -0.2:
+        summary += "Overall, the sentiment of the corpus is negative."
+    else:
+        summary += "Overall, the sentiment of the corpus is neutral."
+
+    return summary
 
 def rank_papers(df, embeddings, query_embedding=None, sim=None):
     n = len(df)
@@ -132,3 +151,17 @@ def rank_papers(df, embeddings, query_embedding=None, sim=None):
     df['score'] = scores
     df_sorted = df.sort_values('score', ascending=False).reset_index(drop=True)
     return df_sorted
+
+def visualize_graph(G, labels, output_path):
+    """Visualizes a graph with nodes colored by cluster."""
+    plt.figure(figsize=(12, 12))
+    pos = nx.spring_layout(G, k=0.1, iterations=20)
+    
+    # Create a color map from cluster labels
+    colors = [labels.get(node, 0) for node in G.nodes()]
+    
+    nx.draw_networkx_nodes(G, pos, node_color=colors, cmap=plt.cm.viridis, node_size=50)
+    nx.draw_networkx_edges(G, pos, alpha=0.5)
+    
+    plt.title("Paper Similarity Network")
+    plt.savefig(output_path)

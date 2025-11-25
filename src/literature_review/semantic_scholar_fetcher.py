@@ -14,7 +14,7 @@ def safe_request(url, params=None, headers=None, backoff=1.0, max_tries=5):
 def fetch_semanticscholar(query, limit=100):
     # fallback search to enrich metadata (citations) — limited fields for public API
     papers = []
-    params = {"query": query, "limit": limit, "fields": "title,abstract,authors,year,venue,doi,url,citationCount"}
+    params = {"query": query, "limit": limit, "fields": "title,abstract"}
     r = safe_request(SEMANTIC_SCHOLAR_API, params=params)
     data = r.json()
     for item in data.get("data", []):

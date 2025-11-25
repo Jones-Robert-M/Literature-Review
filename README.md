@@ -1,8 +1,26 @@
 # Literature Review
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/release/python-380/)
+
 An autonomous literature review tool that uses large language models to help you conduct literature reviews.
 
-## Installation
+## Features
+
+-   **Fetch Papers**: Fetches papers from arXiv and Semantic Scholar.
+-   **In-depth Analysis**: Performs sentiment analysis, clustering, and ranking of papers.
+-   **Visualizations**: Generates word clouds and network graphs to visualize the relationships between papers.
+-   **Summarization**: Uses the Gemini API to summarize the abstracts of the top papers.
+-   **Extensible**: Easily extensible to support other data sources and analysis methods.
+
+## Getting Started
+
+### Prerequisites
+
+-   Python 3.8 or higher
+-   pip
+
+### Installation
 
 1.  Clone this repository:
     ```bash
@@ -17,7 +35,7 @@ An autonomous literature review tool that uses large language models to help you
     pip install -e .
     ```
 
-## Configuration
+### Configuration
 
 This tool can use the Gemini API to summarize papers. To use this feature, you need to configure your Gemini API key.
 
@@ -32,37 +50,65 @@ This tool can use the Gemini API to summarize papers. To use this feature, you n
 
 ## Usage
 
-### arXiv
-
-To fetch papers from arXiv, use the `arxiv` command:
+To fetch and analyze papers, use the `arxiv` command:
 
 ```bash
-literature-review arxiv "your query" --max-results <number-of-results>
+literature-review arxiv "your query" [OPTIONS]
 ```
 
--   `"your query"`: The search query for arXiv.
--   `--max-results`: The maximum number of papers to fetch (optional, defaults to 10).
+### Options
 
-If you have configured your Gemini API key, the tool will also provide a summary of each paper's abstract.
+-   `--max-results`: The maximum number of papers to fetch (default: 20).
+-   `--output-dir`: The directory to save the analysis results (default: None).
+-   `--visualize-graph`: A flag to generate a graph visualization of the papers.
+
+### Example
+
+```bash
+literature-review arxiv "graph neural networks" --max-results 30 --output-dir gnn_analysis --visualize-graph
+```
+
+This command will:
+1.  Fetch the top 30 papers related to "graph neural networks" from arXiv and Semantic Scholar.
+2.  Analyze the papers and save the results to the `gnn_analysis` directory.
+3.  Generate a similarity graph of the papers.
+
+## Outputs
+
+The tool generates the following output files in the specified output directory:
+
+-   `top_10_articles.csv`: A CSV file with the top 10 most relevant papers.
+-   `sentiment_analysis.png`: A histogram of the sentiment scores of the paper abstracts.
+-   `sentiment_summary.txt`: A text file with a summary of the sentiment analysis.
+-   `wordcloud.png`: A word cloud generated from the paper titles and abstracts.
+-   `cluster_summaries.json`: A JSON file with a summary of each paper cluster.
+-   `similarity_graph.png`: A graph visualization of the paper similarity network.
 
 ## Project Structure
 
 ```
 .
-├── configs
+├── configs/
+│   ├── settings.env
 │   └── settings.env.example
-├── src
-│   └── literature_review
+├── src/
+│   └── literature_review/
 │       ├── __init__.py
 │       ├── arxiv_fetcher.py
 │       ├── core.py
 │       ├── main.py
 │       └── semantic_scholar_fetcher.py
+├── analysis_results/
+├── explanation.txt
+├── LICENSE
 ├── pyproject.toml
 └── README.md
 ```
 
--   `configs`: Contains configuration files.
--   `src/literature_review`: The main source code for the project.
--   `pyproject.toml`: Defines the project structure and dependencies.
--   `README.md`: This file.
+## Contributing
+
+Contributions are welcome! If you have any ideas, suggestions, or bug reports, please open an issue or submit a pull request.
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
