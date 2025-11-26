@@ -1,0 +1,35 @@
+You've successfully implemented the rate-limiting for the Semantic Scholar API. Now, let's address how to identify promising research topics based on the generated outputs:
+
+### Identifying Promising Research Topics
+
+The tool generates several outputs that can help you identify interesting research topics:
+
+1.  **Corpus Summary (`corpus_summary.txt`)**:
+    *   **What to look for**: This summary provides a high-level overview of the entire aggregated corpus of abstracts. Look for emerging concepts, key challenges, open questions, or contradictions mentioned in the summary. These often point to areas where further research is needed or where new developments are occurring.
+    *   **Example**: If the summary frequently mentions "challenges in scalability" or "lack of robust evaluation methods" for a particular domain, these could be promising areas to investigate.
+
+2.  **Cluster Summaries (`cluster_summaries.json`)**:
+    *   **What to look for**: This file groups papers by themes (clusters) and provides the top terms for each cluster.
+        *   **Emerging Themes**: Look for clusters that are relatively small but contain recent papers, or clusters with very distinct, focused top terms. These might represent new sub-fields gaining traction.
+        *   **Interdisciplinary Connections**: If you see clusters with top terms that bridge different domains, this could indicate an interesting interdisciplinary research area.
+        *   **Gaps**: Sometimes, the absence of a certain topic in any cluster, despite being related to your query, might indicate an underdeveloped area.
+    *   **Example**: If you search for "AI in healthcare" and find a cluster on "ethical implications of AI diagnostics," but another related cluster on "AI in patient data privacy" is small or absent, that could highlight a research gap.
+
+3.  **Word Cloud (`wordcloud.png`)**:
+    *   **What to look for**: The word cloud visually emphasizes frequently occurring single words and phrases.
+        *   **Dominant Concepts**: The largest words represent the most prevalent topics. While these might be well-researched, combining them with less dominant but related terms could reveal niches.
+        *   **Unexpected Terms**: Look for terms that appear prominently but were not explicitly in your initial query. These could be unexpected sub-topics or related fields.
+
+4.  **Similarity Graph (`similarity_graph.png`)**:
+    *   **What to look for**: This visual representation of paper relationships can show:
+        *   **Dense Clusters**: Well-defined, tightly connected clusters (themes) indicate active research areas.
+        *   **Loose Connections/Bridges**: Papers or small clusters that bridge between larger, distinct clusters can point to interdisciplinary work or areas ripe for integration.
+        *   **Isolated Papers**: A few isolated papers could either be outliers or early work in a novel, emerging direction.
+
+**General Approach:**
+
+Combine insights from all these outputs. For instance, if the `corpus_summary` mentions a significant challenge, then check the `cluster_summaries` for themes related to that challenge. If a theme seems promising, dive deeper into the papers within that cluster. The word cloud can help confirm the prevalence of certain keywords.
+
+Remember that identifying "promising" research topics often involves a blend of quantitative analysis (what the tool provides) and qualitative interpretation (your domain knowledge). The tool helps you quickly sift through a large volume of literature to pinpoint areas for deeper human investigation.
+
+Now, if you provide your `SEMANTIC_SCHOLAR_API_KEY` in `configs/settings.env`, the sub-search functionality will be much more effective, as it will be able to fetch references and expand your corpus significantly, potentially revealing more connections and topics.

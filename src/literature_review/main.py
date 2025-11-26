@@ -20,8 +20,11 @@ from literature_review.core import (
 )
 from literature_review.plotting_utils import set_favourite_plot_params, apply_favourite_figure_params
 import pandas as pd
-from wordcloud import WordCloud
+from wordcloud import WordCloud, ImageColorGenerator
 import matplotlib.pyplot as plt
+import distinctipy
+import requests # Import requests to catch its exceptions
+import json
 
 def create_output_dir(output_dir):
     """Create the output directory if it doesn't exist."""
@@ -44,16 +47,25 @@ def arxiv(query, max_results, output_dir, do_visualize_graph, sub_search):
     """Fetches papers from arXiv, analyzes them, and saves the results."""
     output_dir = create_output_dir(output_dir)
     
-    click.echo(f"Fetching papers from arXiv with query: '{query}' and max results: {max_results}")
-    arxiv_papers = fetch_arxiv(query, max_results=max_results)
-    
+    arxiv_papers = []
+    try:
+        click.echo(f"Fetching papers from arXiv with query: '{query}' and max results: {max_results}")
+        arxiv_papers = fetch_arxiv(query, max_results=max_results)
+    except requests.exceptions.ConnectionError as e:
+        click.echo(f"Warning: Could not fetch papers from arXiv. Reason: {e}")
+        click.echo("This might be a temporary network issue or DNS problem. Continuing without arXiv papers.")
+    except Exception as e:
+        click.echo(f"An unexpected error occurred while fetching from arXiv: {e}")
+        click.echo("Continuing without arXiv papers.")
+
+
     ss_papers = []
     try:
         click.echo(f"Fetching papers from Semantic Scholar with query: '{query}' and max results: {max_results}")
         ss_papers = fetch_semanticscholar(query, limit=max_results)
     except Exception as e:
         click.echo(f"Warning: Could not fetch papers from Semantic Scholar. Reason: {e}")
-        click.echo("Continuing with arXiv papers only.")
+        click.echo("Continuing with arXiv papers only (if any were fetched).")
 
     initial_papers = dedupe_papers(arxiv_papers + ss_papers)
     papers = initial_papers.copy()
@@ -90,7 +102,7 @@ def arxiv(query, max_results, output_dir, do_visualize_graph, sub_search):
 
 
     if not papers:
-        click.echo("No papers found.")
+        click.echo("No papers found from any source. Exiting.")
         return
         
     df = build_corpus(papers)
@@ -127,7 +139,7 @@ def arxiv(query, max_results, output_dir, do_visualize_graph, sub_search):
         fig = apply_favourite_figure_params(fig)
         sentiment_plot_path = os.path.join(output_dir, 'sentiment_analysis.png')
         plt.savefig(sentiment_plot_path)
-        plt.close()
+        plt.close() # Close figure to free memory
         click.echo(f"Sentiment analysis plot saved to {sentiment_plot_path}")
         with open(os.path.join(output_dir, "sentiment_summary.txt"), "w") as f:
             f.write(sentiment_summary)
@@ -135,12 +147,33 @@ def arxiv(query, max_results, output_dir, do_visualize_graph, sub_search):
     # Word Cloud
     click.echo("\nGenerating word cloud...")
     all_text = " ".join(df['text'].tolist())
-    wordcloud = WordCloud(width=1600, height=800, background_color="white").generate(all_text)
     
-    if output_dir:
-        wordcloud_path = os.path.join(output_dir, 'wordcloud.png')
-        wordcloud.to_file(wordcloud_path)
-        click.echo(f"Word cloud saved to {wordcloud_path}")
+    if all_text:
+        # Generate distinct colors
+        num_unique_words = len(set(word.lower() for word in all_text.split() if word.isalpha())) # Count actual unique words
+        # Limit colors to a reasonable number to prevent performance issues and ensure visual distinction
+        colors_to_generate = min(num_unique_words, 100) 
+        if colors_to_generate > 0:
+            colors = distinctipy.get_colors(colors_to_generate)
+        else: # Fallback if no words to color
+            colors = [(0.0, 0.0, 0.0)] # Black
+        
+        # Create a color function for the word cloud
+        color_idx = 0
+        def get_distinct_color(word, font_size, position, orientation, random_state=None, **kwargs):
+            nonlocal color_idx
+            color = colors[color_idx % len(colors)]
+            color_idx += 1
+            return distinctipy.get_hex(color)
+
+        wordcloud = WordCloud(width=1600, height=800, background_color="white", color_func=get_distinct_color).generate(all_text)
+        
+        if output_dir:
+            wordcloud_path = os.path.join(output_dir, 'wordcloud.png')
+            wordcloud.to_file(wordcloud_path)
+            click.echo(f"Word cloud saved to {wordcloud_path}")
+    else:
+        click.echo("No text available to generate word cloud.")
 
     # Clustering
     click.echo("\nClustering papers to identify themes...")
@@ -149,34 +182,56 @@ def arxiv(query, max_results, output_dir, do_visualize_graph, sub_search):
     df['cluster'] = df.index.map(lambda i: labels.get(i, -1))
     summaries = cluster_summaries(df, labels)
     
-    if output_dir:
-        with open(os.path.join(output_dir, "cluster_summaries.json"), "w") as f:
-            import json
-            json.dump(summaries, f, indent=2)
-        click.echo(f"Cluster summaries saved to {os.path.join(output_dir, 'cluster_summaries.json')}")
-        
     # Graph Visualization
+    full_cluster_info = {}
     if do_visualize_graph:
         click.echo("\nGenerating graph visualization...")
         if output_dir:
-            graph_path = os.path.join(output_dir, 'similarity_graph.png')
-            visualize_graph(G_sim, labels, summaries, graph_path)
+            graph_path = os.path.join(output_dir, 'similarity_graph.html') # Changed to HTML
+            full_cluster_info = visualize_graph(G_sim, labels, summaries, graph_path, df) # Pass df here
             click.echo(f"Graph visualization saved to {graph_path}")
 
-    # Corpus Summarization
-    click.echo("\nSummarizing the entire corpus...")
-    all_abstracts = " ".join(df['abstract'].fillna("").tolist())
-    if len(all_abstracts.strip()) > 0:
-        corpus_summary = summarize_text_local(all_abstracts)
-        click.echo("\nCorpus Summary:")
-        click.echo(corpus_summary)
-        if output_dir:
-            with open(os.path.join(output_dir, "corpus_summary.txt"), "w") as f:
-                f.write(corpus_summary)
-            click.echo(f"\nCorpus summary saved to {os.path.join(output_dir, 'corpus_summary.txt')}")
+    # Save cluster info including edge counts
+    if output_dir and full_cluster_info:
+        cluster_info_path = os.path.join(output_dir, "graph_cluster_info.json")
+        with open(cluster_info_path, "w") as f:
+            json.dump(full_cluster_info, f, indent=2)
+        click.echo(f"Graph cluster information saved to {cluster_info_path}")
+        
+    if output_dir:
+        with open(os.path.join(output_dir, "cluster_summaries.json"), "w") as f:
+            json.dump(summaries, f, indent=2)
+        click.echo(f"Cluster summaries saved to {os.path.join(output_dir, 'cluster_summaries.json')}")
 
-    # Summarization of top 10
-    click.echo("\nSummarizing top 10 papers...")
+    # Theme-specific Summaries
+    click.echo("\nSummarizing top 10 themes...")
+    if full_cluster_info:
+        # Sort clusters by number of papers (descending) and take the top 10
+        sorted_clusters = sorted(full_cluster_info.items(), key=lambda item: item[1]['n_papers'], reverse=True)
+        top_10_clusters = dict(sorted_clusters[:min(10, len(sorted_clusters))])
+
+        for cid, info in top_10_clusters.items():
+            click.echo(f"\n--- Theme {cid} (Top Terms: {', '.join(info['top_terms'])}) ---")
+            theme_abstracts = " ".join(df.iloc[info['paper_indices']]['abstract'].fillna("").tolist())
+            if len(theme_abstracts.strip()) > 0:
+                try:
+                    theme_summary = summarize_text_local(theme_abstracts)
+                    click.echo(f"Summary: {theme_summary}")
+                    if output_dir:
+                        theme_summary_path = os.path.join(output_dir, f"theme_summary_C{cid}.txt")
+                        with open(theme_summary_path, "w") as f:
+                            f.write(theme_summary)
+                        click.echo(f"Theme summary saved to {theme_summary_path}")
+                except Exception as e:
+                    click.echo(f"Error summarizing theme {cid}: {e}")
+            else:
+                click.echo("No abstracts available for this theme to summarize.")
+    else:
+        click.echo("No cluster information available to summarize themes.")
+
+
+    # Summarization of top 10 ranked papers (original functionality)
+    click.echo("\nSummarizing top 10 ranked papers...")
     for i, row in top_10.iterrows():
         click.echo(f"\nTitle: {row['title']}")
         click.echo(f"Authors: {row['authors']}")

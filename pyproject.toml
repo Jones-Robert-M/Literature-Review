@@ -31,6 +31,8 @@ dependencies = [
     "click",
     "python-dotenv",
     "google-generativeai",
+    "distinctipy",
+    "pyvis",
 ]
 license = "GPL-3.0-or-later"
 
