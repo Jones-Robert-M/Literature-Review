@@ -13,7 +13,6 @@ readme = "README.md"
 requires-python = ">=3.8"
 classifiers = [
     "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
     "Operating System :: OS Independent",
 ]
 dependencies = [
@@ -33,6 +32,7 @@ dependencies = [
     "google-generativeai",
     "distinctipy",
     "pyvis",
+    "openai",
 ]
 license = "GPL-3.0-or-later"
 

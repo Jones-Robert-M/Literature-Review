@@ -13,6 +13,7 @@ from itertools import combinations
 from pyvis.network import Network # Import pyvis
 import colorsys # For better color generation
 import json # Import json for proper formatting of pyvis options
+from collections import Counter # For distributions
 
 EMBED_MODEL = "sentence-transformers/all-mpnet-base-v2"
 SENTIMENT_MODEL = "distilbert-base-uncased-finetuned-sst-2-english"
@@ -242,6 +243,137 @@ def plot_reference_overlap(overlaps, output_path):
     plt.savefig(output_path)
     plt.close()
 
+def get_graph_statistics(G, labels):
+    """Calculates summary statistics for the graph."""
+    stats = {}
+    stats['num_nodes'] = G.number_of_nodes()
+    stats['num_edges'] = G.number_of_edges()
+    
+    if stats['num_nodes'] > 0:
+        degrees = [d for n, d in G.degree()]
+        stats['avg_degree'] = np.mean(degrees)
+        try:
+            stats['avg_clustering_coefficient'] = nx.average_clustering(G)
+        except Exception:
+            stats['avg_clustering_coefficient'] = 0.0 # Handle disconnected graphs
+
+        stats['num_connected_components'] = nx.number_connected_components(G)
+        stats['num_isolated_nodes'] = len(list(nx.isolates(G)))
+        stats['degree_distribution'] = list(degrees) # Store for plotting
+    else:
+        stats['avg_degree'] = 0.0
+        stats['avg_clustering_coefficient'] = 0.0
+        stats['num_connected_components'] = 0
+        stats['num_isolated_nodes'] = 0
+        stats['degree_distribution'] = []
+
+    # Cluster size distribution
+    cluster_sizes = {}
+    for cluster_id in set(labels.values()):
+        cluster_sizes[cluster_id] = sum(1 for node_id, cid in labels.items() if cid == cluster_id)
+    stats['cluster_size_distribution'] = list(cluster_sizes.values())
+    
+    return stats
+
+def plot_degree_distribution(degree_sequence, output_path):
+    """Plots the degree distribution of the graph."""
+    if not degree_sequence:
+        print("Warning: No degree data to plot distribution.")
+        return
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.hist(degree_sequence, bins=max(1, int(np.sqrt(len(degree_sequence)))), edgecolor='black')
+    ax.set_title('Node Degree Distribution', fontsize=16, fontweight='bold')
+    ax = set_favourite_plot_params(ax, x_title='Degree', y_title='Number of Nodes')
+    fig = apply_favourite_figure_params(fig)
+    plt.savefig(output_path)
+    plt.close()
+
+def plot_cluster_size_distribution(cluster_sizes, output_path):
+    """Plots the distribution of cluster sizes."""
+    if not cluster_sizes:
+        print("Warning: No cluster size data to plot distribution.")
+        return
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.hist(cluster_sizes, bins=max(1, int(np.sqrt(len(cluster_sizes)))), edgecolor='black')
+    ax.set_title('Cluster Size Distribution', fontsize=16, fontweight='bold')
+    ax = set_favourite_plot_params(ax, x_title='Cluster Size (Number of Papers)', y_title='Number of Clusters')
+    fig = apply_favourite_figure_params(fig)
+    plt.savefig(output_path)
+    plt.close()
+
+def get_keywords_distribution(df, top_n=20):
+    """Extracts top N keywords and their frequencies from the corpus."""
+    vectorizer = TfidfVectorizer(max_features=1000, stop_words='english', ngram_range=(1,2))
+    tfidf_matrix = vectorizer.fit_transform(df['text'].dropna())
+    feature_names = vectorizer.get_feature_names_out()
+    
+    # Sum TF-IDF scores for each term across all documents
+    sums = tfidf_matrix.sum(axis=0)
+    keywords_scores = []
+    for col, term in enumerate(feature_names):
+        keywords_scores.append((term, sums[0, col]))
+    
+    keywords_scores.sort(key=lambda x: x[1], reverse=True)
+    return keywords_scores[:top_n]
+
+def plot_keywords_distribution(keywords_dist, output_path):
+    """Plots the distribution of top keywords."""
+    if not keywords_dist:
+        print("Warning: No keyword data to plot distribution.")
+        return
+
+    keywords = [item[0] for item in keywords_dist]
+    scores = [item[1] for item in keywords_dist]
+
+    fig, ax = plt.subplots(figsize=(12, 8))
+    ax.barh(keywords, scores, color='skyblue')
+    ax.set_xlabel('Score', fontsize=12, fontweight='bold')
+    ax.set_ylabel('Keywords', fontsize=12, fontweight='bold')
+    ax.set_title('Top Keywords Distribution', fontsize=16, fontweight='bold')
+    ax.invert_yaxis() # Highest score at the top
+    
+    ax = set_favourite_plot_params(ax, x_title='TF-IDF Score', y_title='Keyword')
+    fig = apply_favourite_figure_params(fig)
+    plt.savefig(output_path)
+    plt.close()
+
+def get_author_distribution(df, min_articles=5):
+    """Counts articles per author and returns authors with more than min_articles."""
+    all_authors = []
+    for authors_str in df['authors'].dropna():
+        # Handle different delimiters (e.g., ", " or ";")
+        if "; " in authors_str:
+            all_authors.extend([a.strip() for a in authors_str.split(';') if a.strip()])
+        else:
+            all_authors.extend([a.strip() for a in authors_str.split(',') if a.strip()])
+
+    author_counts = Counter(all_authors)
+    prolific_authors = {author: count for author, count in author_counts.items() if count >= min_articles}
+    return sorted(prolific_authors.items(), key=lambda item: item[1], reverse=True)
+
+def plot_author_distribution(author_dist, output_path):
+    """Plots the distribution of prolific authors."""
+    if not author_dist:
+        print(f"Warning: No authors found with more than 5 articles to plot distribution.")
+        return
+
+    authors = [item[0] for item in author_dist]
+    counts = [item[1] for item in author_dist]
+
+    fig, ax = plt.subplots(figsize=(12, 8))
+    ax.barh(authors, counts, color='lightcoral')
+    ax.set_xlabel('Number of Articles', fontsize=12, fontweight='bold')
+    ax.set_ylabel('Author', fontsize=12, fontweight='bold')
+    ax.set_title('Authors with Most Articles', fontsize=16, fontweight='bold')
+    ax.invert_yaxis()
+    
+    ax = set_favourite_plot_params(ax, x_title='Number of Articles', y_title='Author')
+    fig = apply_favourite_figure_params(fig)
+    plt.savefig(output_path)
+    plt.close()
+
 def visualize_graph(G, labels, cluster_summaries_input, output_path, df_papers_info):
     """
     Visualizes an interactive graph using Pyvis with nodes colored by cluster,
@@ -249,15 +381,16 @@ def visualize_graph(G, labels, cluster_summaries_input, output_path, df_papers_i
     """
     net = Network(height="750px", width="100%", bgcolor="#222222", font_color="white", notebook=True, cdn_resources='remote')
     
+    # Physics options as a Python dictionary, then dump to JSON string
     physics_options = {
       "physics": {
         "barnesHut": {
           "gravitationalConstant": -10000, 
-          "centralGravity": 0.01,
-          "springLength": 200,
-          "springConstant": 0.03,
+          "centralGravity": 0.01,        
+          "springLength": 200,           
+          "springConstant": 0.03,        
           "damping": 0.09,
-          "avoidOverlap": 0.9
+          "avoidOverlap": 0.9            
         },
         "maxVelocity": 50,
         "minVelocity": 0.1,
@@ -267,27 +400,31 @@ def visualize_graph(G, labels, cluster_summaries_input, output_path, df_papers_i
     }
     net.set_options(json.dumps(physics_options))
 
+    # Generate a set of distinct colors for clusters
     num_unique_clusters = len(set(labels.values()))
     hsv_colors = [(i / num_unique_clusters, 0.8, 0.8) for i in range(num_unique_clusters)]
     hex_colors = [f'#{int(c[0]*255):02x}{int(c[1]*255):02x}{int(c[2]*255):02x}' for c in [colorsys.hsv_to_rgb(*hsv) for hsv in hsv_colors]]
     
+    # Calculate number of edges for each cluster and enrich cluster_summaries_input
     full_cluster_info = {}
     for cid in sorted(set(labels.values())):
         cluster_nodes = [node for node, cluster_id in labels.items() if cluster_id == cid]
-        n_edges = G.subgraph(cluster_nodes).number_of_edges() if cluster_nodes else 0 
+        n_edges = G.subgraph(cluster_nodes).number_of_edges() if cluster_nodes else 0
         
         summary = cluster_summaries_input.get(cid, {"n_papers": 0, "top_terms": [], "paper_indices": []})
         
         full_cluster_info[cid] = {
             "n_papers": summary['n_papers'],
             "top_terms": summary['top_terms'],
-            "paper_indices": [int(idx) for idx in summary['paper_indices']], 
+            "paper_indices": [int(idx) for idx in summary['paper_indices']],
             "n_edges": n_edges
         }
     
+    # Sort clusters by number of papers (descending) and take the top 10
     sorted_clusters = sorted(full_cluster_info.items(), key=lambda item: item[1]['n_papers'], reverse=True)
-    top_10_clusters = dict(sorted_clusters[:min(10, len(sorted_clusters))]) 
+    top_10_clusters = dict(sorted_clusters[:min(10, len(sorted_clusters))])
 
+    # Add nodes to the network
     for node_idx, cluster_id in labels.items():
         cluster_color = hex_colors[cluster_id % len(hex_colors)]
         
@@ -296,12 +433,14 @@ def visualize_graph(G, labels, cluster_summaries_input, output_path, df_papers_i
         node_id_for_pyvis = str(node_idx)
 
         paper_title = df_papers_info.iloc[node_idx]['title']
-        
+        # Trim top terms for display in node title text
+        top_terms_for_display = ', '.join(full_cluster_info.get(cluster_id,{}).get('top_terms',[])[:5])
+
         node_title_text = (
             f"Title: {paper_title}<br>"
             f"Cluster: {cluster_id}<br>"
             f"Papers in Cluster: {full_cluster_info.get(cluster_id,{}).get('n_papers',0)}<br>"
-            f"Top Terms: {', '.join(full_cluster_info.get(cluster_id,{}).get('top_terms',[]))}"
+            f"Top 5 Terms: {top_terms_for_display}" # Trimmed here
         )
         
         net.add_node(node_id_for_pyvis,
@@ -309,14 +448,16 @@ def visualize_graph(G, labels, cluster_summaries_input, output_path, df_papers_i
                      group=cluster_id, 
                      color=cluster_color, 
                      size=node_size,
-                     label=paper_title 
+                     label=paper_title # Use actual paper title as label
                     )
     
+    # Add edges to the network
     for u, v, data in G.edges(data=True):
         net.add_edge(str(u), str(v), value=data.get('weight', 0.1), color='#888888', physics=True)
     
+    # Create legend HTML directly within the HTML output.
     legend_html = "<div style='position: absolute; top: 10px; right: 10px; background-color: #333; padding: 10px; border-radius: 5px; color: white; border: 1px solid #555; box-shadow: 0 0 10px rgba(0,0,0,0.5); max-height: 90%; overflow-y: auto;'>"
-    legend_html += "<h4 style='color: white; margin-top: 0; border-bottom: 1px solid #555; padding-bottom: 5px;'>Top Themes:</h4>"
+    legend_html += "<h4 style='color: white; margin-top: 0; border-bottom: 1px solid #555; padding-bottom: 5px;'>Top Themes:</h4>" # Changed to "Top Themes"
     for i, (cid, info) in enumerate(top_10_clusters.items()):
         color = hex_colors[cid % len(hex_colors)]
         top_terms = ", ".join(info['top_terms'][:3])
@@ -324,8 +465,10 @@ def visualize_graph(G, labels, cluster_summaries_input, output_path, df_papers_i
         legend_html += f"C{cid} ({info['n_papers']} papers, {info['n_edges']} edges): {top_terms}</p>"
     legend_html += "</div>"
     
+    # Save the interactive graph as an HTML file
     net.save_graph(output_path)
     
+    # Inject the legend HTML into the generated pyvis HTML
     with open(output_path, 'r+') as f:
         html_content = f.read()
         html_content = html_content.replace('<body>', '<body>' + legend_html, 1)
@@ -333,4 +476,4 @@ def visualize_graph(G, labels, cluster_summaries_input, output_path, df_papers_i
         f.truncate()
         f.write(html_content)
 
-    return full_cluster_info 
+    return full_cluster_info # Return this for JSON output
